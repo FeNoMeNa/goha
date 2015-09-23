@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+// credentials represents the necessary data that will be used to generate
+// the digest Authorization header
 type credentials struct {
 	username   string
 	password   string
@@ -23,6 +25,8 @@ type credentials struct {
 	method     string
 }
 
+// newCredentials creates and initializes a new credentials. It uses
+// WWW-Authenticate header received from server to parse the challenge.
 func newCredentials(username, password, header, uri, method string) *credentials {
 	d := newDigestHeader(header)
 
@@ -31,11 +35,13 @@ func newCredentials(username, password, header, uri, method string) *credentials
 	algorithm := d.algorithm()
 	opaque := d.opaque()
 	qop := d.qop()
-	cnonce := randomNonce()
+	cnonce := randomNonce() // random generated client nonce
 
 	return &credentials{username, password, realm, nonce, uri, algorithm, cnonce, opaque, qop, 0, method}
 }
 
+// authHeader returns the value that will be applied to the Authorization header.
+// With this header the http client authorizes the request.
 func (c *credentials) authHeader() string {
 	var sl []string
 
@@ -62,6 +68,8 @@ func (c *credentials) authHeader() string {
 	return "Digest " + strings.Join(sl, ", ")
 }
 
+// response calculates the digest response that will be embedded in the Authorization header.
+// If the qop is not specified it applies the scheme described in RFC 2069.
 func (c *credentials) response() string {
 	c.nonceCount++
 
@@ -112,6 +120,8 @@ func (d digestHeader) qop() string {
 	return parseDirective(d.header, "qop")
 }
 
+// h takes a variable number of strings, concatenates them with ':'
+// and calculates the MD5 sum of the resulting string
 func h(parts ...string) string {
 	var content bytes.Buffer
 
@@ -126,6 +136,7 @@ func h(parts ...string) string {
 	return fmt.Sprintf("%x", md5.Sum([]byte(data)))
 }
 
+// randomNonce generates a random nonce, hexadecimal string with 16 digits
 func randomNonce() string {
 	b := make([]byte, 8)
 	io.ReadFull(rand.Reader, b)
@@ -133,6 +144,8 @@ func randomNonce() string {
 	return fmt.Sprintf("%x", b)[:16]
 }
 
+// parseDirective parses a directive with a given name from the
+// Authorization header. If the name does not exist, it returns empty string
 func parseDirective(header, name string) string {
 	index := strings.Index(header, name)
 

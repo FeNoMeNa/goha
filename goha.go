@@ -5,18 +5,23 @@ import (
 	"strings"
 )
 
+// NewClient creates and initializes a new http client that will be able to
+// authorize its requests via Basic / Digest authentication scheme.
 func NewClient(username, password string) *http.Client {
 	t := &transport{username, password}
 	return &http.Client{Transport: t}
 }
 
-// Transport is an implementation of http.RoundTripper that takes care of http authentication.
+// transport is an implementation of http.RoundTripper that takes care of
+// http authentication.
 type transport struct {
 	username string
 	password string
 }
 
-// RoundTrip makes an authorized request using digest authentication.
+// RoundTrip makes an authorized requests. First it sends a http request to
+// obtain the authentication challenge and then authorizes the request via
+// Basic / Digest authentication scheme.
 func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Clones the request so the input is not modified.
 	creq := cloneRequest(req)
@@ -30,19 +35,22 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	header := resp.Header.Get("WWW-Authenticate")
 
+	// We should use Digest scheme to authorize the request
 	if strings.HasPrefix(header, "Digest ") { // TODO: Case sensitive
 		c := newCredentials(t.username, t.password, header, creq.URL.RequestURI(), creq.Method)
 		creq.Header.Set("Authorization", c.authHeader())
 	}
 
+	// We should use Basic scheme to authorize the request
 	if strings.HasPrefix(header, "Basic ") { // TODO: Case sensitive
 		creq.SetBasicAuth(t.username, t.password)
 	}
 
-	// Make authenticated request.
 	return http.DefaultTransport.RoundTrip(creq)
 }
 
+// cloneRequest returns a clone of the provided *http.Request.
+// The clone is a shallow copy of the struct and its Header map.
 func cloneRequest(r *http.Request) *http.Request {
 	// shallow copy of the struct
 	r2 := new(http.Request)
