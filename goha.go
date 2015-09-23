@@ -23,41 +23,69 @@ type transport struct {
 	transport http.RoundTripper
 }
 
+func (t *transport) newCredentials(r *http.Request) *credentials {
+	h := r.Header.Get("WWW-Authenticate")
+	d := newDigestHeader(h)
+
+	return &credentials{
+		t.username,
+		t.password,
+		d.realm(),
+		d.nonce(),
+		r.URL.RequestURI(),
+		d.algorithm(),
+		randomNonce(),
+		d.opaque(),
+		d.qop(),
+		0,
+		r.Method,
+	}
+}
+
 func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.transport.RoundTrip(req)
 }
 
-type challenge struct {
-	realm     string
-	nonce     string
-	opaque    string
-	algorithm string
-	qop       string
+type digestHeader struct {
+	header string
 }
 
-func newChallenge(header string) *challenge {
-	realm := parseDirective(header, "realm", "")
-	nonce := parseDirective(header, "nonce", "")
-	opaque := parseDirective(header, "opaque", "")
-	algorithm := parseDirective(header, "algorithm", "MD5")
-	qop := parseDirective(header, "qop", "")
+func newDigestHeader(header string) digestHeader {
+	return digestHeader{header}
+}
 
-	return &challenge{realm, nonce, opaque, algorithm, qop}
+func (d digestHeader) realm() string {
+	return parseDirective(d.header, "realm", "")
+}
+
+func (d digestHeader) nonce() string {
+	return parseDirective(d.header, "nonce", "")
+}
+
+func (d digestHeader) algorithm() string {
+	return parseDirective(d.header, "algorithm", "MD5")
+}
+
+func (d digestHeader) opaque() string {
+	return parseDirective(d.header, "opaque", "")
+}
+
+func (d digestHeader) qop() string {
+	return parseDirective(d.header, "qop", "")
 }
 
 type credentials struct {
-	username    string
-	password    string
-	realm       string
-	nonce       string
-	digestURI   string
-	algorithm   string
-	cnonce      string
-	opaque      string
-	qop         string
-	nonceCount  int
-	method      string
-	randomNonce func() string
+	username   string
+	password   string
+	realm      string
+	nonce      string
+	digestURI  string
+	algorithm  string
+	cnonce     string
+	opaque     string
+	qop        string
+	nonceCount int
+	method     string
 }
 
 func (c *credentials) authHeader() string {
@@ -70,8 +98,6 @@ func (c *credentials) response() string {
 	if c.qop == "" {
 		return h(c.ha1(), c.nonce, c.ha2())
 	}
-
-	c.cnonce = c.randomNonce()
 
 	return h(c.ha1(), c.nonce, c.nonceCountStr(), c.cnonce, c.qop, c.ha2())
 }
@@ -86,6 +112,14 @@ func (c *credentials) ha1() string {
 
 func (c *credentials) ha2() string {
 	return h(c.method, c.digestURI)
+}
+
+type directive struct {
+	name, value string
+}
+
+func newDirective(name, value string) directive {
+	return directive{name, value}
 }
 
 func h(parts ...string) string {

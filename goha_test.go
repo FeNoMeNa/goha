@@ -176,7 +176,6 @@ func TestResponseCalculation(t *testing.T) {
 				"auth",
 				0,
 				"GET",
-				fakeRandomNonce("f411c12de944bdf5"),
 			},
 
 			"7e664d656eaa8b7d4d7a4b504b57caa1",
@@ -195,7 +194,6 @@ func TestResponseCalculation(t *testing.T) {
 				"auth",
 				0,
 				"GET",
-				fakeRandomNonce("0a4f113b"),
 			},
 
 			"6629fae49393a05397450978507c4ef1",
@@ -214,7 +212,6 @@ func TestResponseCalculation(t *testing.T) {
 				"",
 				0,
 				"GET",
-				fakeRandomNonce(""),
 			},
 
 			"670fd8c2df070c60b045671b8b24ff02",
