@@ -6,15 +6,14 @@ import (
 )
 
 func NewClient(username, password string) *http.Client {
-	t := &transport{username, password, http.DefaultTransport}
+	t := &transport{username, password}
 	return &http.Client{Transport: t}
 }
 
 // Transport is an implementation of http.RoundTripper that takes care of http authentication.
 type transport struct {
-	username  string
-	password  string
-	transport http.RoundTripper
+	username string
+	password string
 }
 
 // RoundTrip makes an authorized request using digest authentication.
@@ -23,7 +22,7 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	creq := cloneRequest(req)
 
 	// Make a request to get the 401 that contains the challenge.
-	resp, err := t.transport.RoundTrip(req)
+	resp, err := http.DefaultTransport.RoundTrip(req)
 
 	if err != nil || resp.StatusCode != 401 {
 		return resp, err
@@ -41,7 +40,7 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	// Make authenticated request.
-	return t.transport.RoundTrip(creq)
+	return http.DefaultTransport.RoundTrip(creq)
 }
 
 func cloneRequest(r *http.Request) *http.Request {
