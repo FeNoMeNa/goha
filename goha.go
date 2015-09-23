@@ -31,12 +31,12 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	header := resp.Header.Get("WWW-Authenticate")
 
-	if strings.HasPrefix(header, "Digest ") {
-		c := newCredentials(t.username, t.password, "", creq.URL.RequestURI(), creq.Method)
+	if strings.HasPrefix(header, "Digest ") { // TODO: Case sensitive
+		c := newCredentials(t.username, t.password, header, creq.URL.RequestURI(), creq.Method)
 		creq.Header.Set("Authorization", c.authHeader())
 	}
 
-	if strings.HasPrefix(header, "Basic ") {
+	if strings.HasPrefix(header, "Basic ") { // TODO: Case sensitive
 		creq.SetBasicAuth(t.username, t.password)
 	}
 
