@@ -23,26 +23,31 @@ type transport struct {
 	transport http.RoundTripper
 }
 
-func (t *transport) newCredentials(r *http.Request) *credentials {
-	h := r.Header.Get("WWW-Authenticate")
-	d := newDigestHeader(h)
+func (t *transport) newCredentials(header, method, uri string) *credentials {
+	d := newDigestHeader(header)
 
 	return &credentials{
 		t.username,
 		t.password,
 		d.realm(),
 		d.nonce(),
-		r.URL.RequestURI(),
+		uri,
 		d.algorithm(),
 		randomNonce(),
 		d.opaque(),
 		d.qop(),
 		0,
-		r.Method,
+		method,
 	}
 }
 
 func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, _ := t.transport.RoundTrip(req)
+
+	c := t.newCredentials(resp.Header.Get("WWW-Authenticate"), req.Method, req.URL.RequestURI())
+
+	req.Header.Set("Authorization", c.authHeader())
+
 	return t.transport.RoundTrip(req)
 }
 
@@ -55,23 +60,23 @@ func newDigestHeader(header string) digestHeader {
 }
 
 func (d digestHeader) realm() string {
-	return parseDirective(d.header, "realm", "")
+	return parseDirective(d.header, "realm")
 }
 
 func (d digestHeader) nonce() string {
-	return parseDirective(d.header, "nonce", "")
+	return parseDirective(d.header, "nonce")
 }
 
 func (d digestHeader) algorithm() string {
-	return parseDirective(d.header, "algorithm", "MD5")
+	return parseDirective(d.header, "algorithm")
 }
 
 func (d digestHeader) opaque() string {
-	return parseDirective(d.header, "opaque", "")
+	return parseDirective(d.header, "opaque")
 }
 
 func (d digestHeader) qop() string {
-	return parseDirective(d.header, "qop", "")
+	return parseDirective(d.header, "qop")
 }
 
 type credentials struct {
@@ -89,7 +94,29 @@ type credentials struct {
 }
 
 func (c *credentials) authHeader() string {
-	return ""
+	var sl []string
+
+	sl = append(sl, `username="`+c.username+`"`)
+	sl = append(sl, `realm="`+c.realm+`"`)
+	sl = append(sl, `nonce="`+c.nonce+`"`)
+	sl = append(sl, `uri="`+c.digestURI+`"`)
+	sl = append(sl, `response="`+c.response()+`"`)
+
+	if c.opaque != "" {
+		sl = append(sl, `opaque="`+c.opaque+`"`)
+	}
+
+	if c.qop != "" {
+		sl = append(sl, "qop="+c.qop)
+		sl = append(sl, "nc="+c.nonceCountStr())
+		sl = append(sl, `cnonce="`+c.cnonce+`"`)
+	}
+
+	if c.algorithm != "" {
+		sl = append(sl, "algorithm="+c.algorithm)
+	}
+
+	return fmt.Sprintf("Digest %s", strings.Join(sl, ", "))
 }
 
 func (c *credentials) response() string {
@@ -114,14 +141,6 @@ func (c *credentials) ha2() string {
 	return h(c.method, c.digestURI)
 }
 
-type directive struct {
-	name, value string
-}
-
-func newDirective(name, value string) directive {
-	return directive{name, value}
-}
-
 func h(parts ...string) string {
 	var content bytes.Buffer
 
@@ -143,11 +162,11 @@ func randomNonce() string {
 	return fmt.Sprintf("%x", b)[:16]
 }
 
-func parseDirective(header, name, value string) string {
+func parseDirective(header, name string) string {
 	index := strings.Index(header, name)
 
 	if index == -1 {
-		return value // it returns default value
+		return ""
 	}
 
 	start := 1 + index + strings.Index(header[index:], `"`)

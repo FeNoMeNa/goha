@@ -8,12 +8,11 @@ import (
 
 func TestParseDirective(t *testing.T) {
 	cases := []struct {
-		header, name, value, want string
+		header, name, want string
 	}{
 		{
 			`WWW-Authenticate: Digest realm="Huawei", nonce="7d03f89029d63508cbd6033dc6cce81b", qop="auth", algorithm="MD5"`,
 			`realm`,
-			`default`,
 			`Huawei`,
 		},
 
@@ -21,19 +20,17 @@ func TestParseDirective(t *testing.T) {
 			`WWW-Authenticate: Digest realm="Huawei", nonce="7d03f89029d63508cbd6033dc6cce81b", qop="auth", algorithm="   MD5   "`,
 			`algorithm`,
 			`MD5`,
-			`MD5`,
 		},
 
 		{
 			`WWW-Authenticate: Digest realm="Huawei", nonce="7d03f89029d63508cbd6033dc6cce81b", algorithm="MD5"`,
 			`qop`,
-			`default`,
-			`default`,
+			``,
 		},
 	}
 
 	for _, c := range cases {
-		got := parseDirective(c.header, c.name, c.value)
+		got := parseDirective(c.header, c.name)
 
 		if got != c.want {
 			t.Errorf("expected %v", c.want)
@@ -220,6 +217,214 @@ func TestResponseCalculation(t *testing.T) {
 
 	for _, c := range cases {
 		got := c.credentials.response()
+
+		if got != c.want {
+			t.Errorf("expected %v", c.want)
+			t.Errorf("     got %v", got)
+		}
+	}
+}
+
+func TestAuthHeader(t *testing.T) {
+	cases := []struct {
+		credentials *credentials
+		want        string
+	}{
+		{
+			&credentials{
+				"acs",
+				"acs",
+				"HuaweiHomeGateway",
+				"ed85d48bc2ef4b3d2958ff8434326a08",
+				"/f9e8d48857a9d759417e3b2488ee76a5",
+				"MD5",
+				"1f37abb0877a794a",
+				"",
+				"auth",
+				0,
+				"GET",
+			},
+
+			`Digest username="acs", realm="HuaweiHomeGateway", nonce="ed85d48bc2ef4b3d2958ff8434326a08", uri="/f9e8d48857a9d759417e3b2488ee76a5", response="34ab5ab421382d014d9900f095d65b9b", qop=auth, nc=00000001, cnonce="1f37abb0877a794a", algorithm=MD5`,
+		},
+
+		{
+			&credentials{
+				"Mufasa",
+				"Circle Of Life",
+				"testrealm@host.com",
+				"dcd98b7102dd2f0e8b11d0f600bfb0c093",
+				"/dir/index.html",
+				"",
+				"0a4f113b",
+				"5ccc069c403ebaf9f0171e9517f40e41",
+				"auth",
+				0,
+				"GET",
+			},
+
+			`Digest username="Mufasa", realm="testrealm@host.com", nonce="dcd98b7102dd2f0e8b11d0f600bfb0c093", uri="/dir/index.html", response="6629fae49393a05397450978507c4ef1", opaque="5ccc069c403ebaf9f0171e9517f40e41", qop=auth, nc=00000001, cnonce="0a4f113b"`,
+		},
+
+		{
+			&credentials{
+				"Mufasa",
+				"Circle Of Life",
+				"testrealm@host.com",
+				"dcd98b7102dd2f0e8b11d0f600bfb0c093",
+				"/dir/index.html",
+				"MD5",
+				"",
+				"",
+				"",
+				0,
+				"GET",
+			},
+
+			`Digest username="Mufasa", realm="testrealm@host.com", nonce="dcd98b7102dd2f0e8b11d0f600bfb0c093", uri="/dir/index.html", response="670fd8c2df070c60b045671b8b24ff02", algorithm=MD5`,
+		},
+	}
+
+	for _, c := range cases {
+		got := c.credentials.authHeader()
+
+		if got != c.want {
+			t.Errorf("expected %v", c.want)
+			t.Errorf("     got %v", got)
+		}
+	}
+}
+
+func TestRealmParsing(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{
+			`WWW-Authenticate: Digest realm="Huawei", nonce="7d03f89029d63508cbd6033dc6cce81b", qop="auth", algorithm="MD5"`,
+			`Huawei`,
+		},
+
+		{
+			`WWW-Authenticate: Digest nonce="7d03f89029d63508cbd6033dc6cce81b", qop="auth", algorithm="MD5"`,
+			``,
+		},
+	}
+
+	for _, c := range cases {
+		h := newDigestHeader(c.in)
+		got := h.realm()
+
+		if got != c.want {
+			t.Errorf("expected %v", c.want)
+			t.Errorf("     got %v", got)
+		}
+	}
+
+}
+
+func TestNonceParsing(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{
+			`WWW-Authenticate: Digest realm="Huawei", nonce="7d03f89029d63508cbd6033dc6cce81b", qop="auth", algorithm="MD5"`,
+			`7d03f89029d63508cbd6033dc6cce81b`,
+		},
+
+		{
+			`WWW-Authenticate: Digest realm="Huawei", qop="auth", algorithm="MD5"`,
+			``,
+		},
+	}
+
+	for _, c := range cases {
+		h := newDigestHeader(c.in)
+		got := h.nonce()
+
+		if got != c.want {
+			t.Errorf("expected %v", c.want)
+			t.Errorf("     got %v", got)
+		}
+	}
+
+}
+
+func TestAlgorithmParsing(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{
+			`WWW-Authenticate: Digest realm="Huawei", nonce="7d03f89029d63508cbd6033dc6cce81b", qop="auth", algorithm="MD5"`,
+			`MD5`,
+		},
+
+		{
+			`WWW-Authenticate: Digest realm="Huawei", nonce="7d03f89029d63508cbd6033dc6cce81b", qop="auth"`,
+			``,
+		},
+	}
+
+	for _, c := range cases {
+		h := newDigestHeader(c.in)
+		got := h.algorithm()
+
+		if got != c.want {
+			t.Errorf("expected %v", c.want)
+			t.Errorf("     got %v", got)
+		}
+	}
+
+}
+
+func TestOpaqueParsing(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{
+			`WWW-Authenticate: Digest realm="Huawei", opaque="7d03f89029d63508cbd6033dc6cce81b", qop="auth", algorithm="MD5"`,
+			`7d03f89029d63508cbd6033dc6cce81b`,
+		},
+
+		{
+			`WWW-Authenticate: Digest realm="Huawei" qop="auth", algorithm="MD5"`,
+			``,
+		},
+	}
+
+	for _, c := range cases {
+		h := newDigestHeader(c.in)
+		got := h.opaque()
+
+		if got != c.want {
+			t.Errorf("expected %v", c.want)
+			t.Errorf("     got %v", got)
+		}
+	}
+}
+
+func TestQopParsing(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{
+			`WWW-Authenticate: Digest realm="Huawei", opaque="7d03f89029d63508cbd6033dc6cce81b", qop="auth", algorithm="MD5"`,
+			`auth`,
+		},
+
+		{
+			`WWW-Authenticate: Digest realm="Huawei", opaque="7d03f89029d63508cbd6033dc6cce81b", algorithm="MD5"`,
+			``,
+		},
+	}
+
+	for _, c := range cases {
+		h := newDigestHeader(c.in)
+		got := h.qop()
 
 		if got != c.want {
 			t.Errorf("expected %v", c.want)
