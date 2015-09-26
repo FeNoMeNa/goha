@@ -87,6 +87,8 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return http.DefaultTransport.RoundTrip(creq)
 }
 
+// CancelRequest cancels an in-flight request by closing its connection.
+// CancelRequest should only be called after RoundTrip has returned.
 func (t *transport) CancelRequest(req *http.Request) {
 	type canceler interface {
 		CancelRequest(*http.Request)
