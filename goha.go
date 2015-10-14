@@ -3,6 +3,7 @@ package goha
 import (
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"strings"
 	"time"
@@ -23,10 +24,15 @@ func NewClient(username, password string) *Client {
 	return &Client{client: c}
 }
 
-// Timeout initializes the default timeout of the http client. A Timeout of zero
-// means no timeout.
+// Timeout initializes the default timeout of the http client.
+// A Timeout of zero means no timeout.
 func (c *Client) Timeout(t time.Duration) *Client {
 	c.client.Timeout = t
+	return c
+}
+
+func (c *Client) Jar(j *cookiejar.Jar) *Client {
+	c.client.Jar = j
 	return c
 }
 
@@ -61,9 +67,6 @@ type transport struct {
 // obtain the authentication challenge and then authorizes the request via
 // Basic / Digest authentication scheme.
 func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Clones the request so the input is not modified.
-	creq := cloneRequest(req)
-
 	// Make a request to get the 401 that contains the challenge.
 	resp, err := http.DefaultTransport.RoundTrip(req)
 
@@ -71,17 +74,20 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 
+	// Clones the request so the input is not modified.
+	creq := cloneRequest(req)
+
 	header := resp.Header.Get("WWW-Authenticate")
 
-	// We should use Digest scheme to authorize the request
-	if strings.HasPrefix(header, "Digest ") { // TODO: Case sensitive
+	if strings.HasPrefix(header, "Digest ") {
+		// We should use Digest scheme to authorize the request
 		c := newCredentials(t.username, t.password, header, creq.URL.RequestURI(), creq.Method)
 		creq.Header.Set("Authorization", c.authHeader())
-	}
-
-	// We should use Basic scheme to authorize the request
-	if strings.HasPrefix(header, "Basic ") { // TODO: Case sensitive
+	} else if strings.HasPrefix(header, "Basic ") {
+		// We should use Basic scheme to authorize the request
 		creq.SetBasicAuth(t.username, t.password)
+	} else {
+		return resp, err
 	}
 
 	return http.DefaultTransport.RoundTrip(creq)
