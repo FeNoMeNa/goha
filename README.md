@@ -19,7 +19,11 @@ import (
 )
 
 func main() {
-	c := goha.NewClient("username", "password")
+	c, err := goha.NewClient("username", "password")
+  
+	if err != nil {
+		return
+	}
 
 	resp, err := c.Get("http://localhost:8080/")
 
